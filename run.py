@@ -1,157 +1,125 @@
-import random
-import math
-
 import numpy as np
-from scipy.linalg import orth
 
-MAX_ITER = 10000
-EARLY_STOP_ERR = 1e-4
-EARLY_STOP_ERR_DELTA = 1e-4
+from app.core import main
 
 
-def _make_lr_matrix(m, n, k):
-    L = np.random.randn(m, k)
-    R = np.random.randn(k, n)
-    return np.dot(L, R)
+def _get_dict_from_data(data):
+    return {
+        'user_id': data[:, 0],
+        'item_id': data[:, 1],
+        'rating': data[:, 4],
+        'confidence': data[:, 5],
+    }
 
 
-def _get_masked_matrix(M, omega):
-    M_max, M_min = np.max(M), np.min(M)
-    M_ = M.copy()
-    M_[(1 - omega).astype(np.int16)] = M_max * M_max
-    return M_
+def _init_data():
+    try:
+        train_data = np.load('train.npy')
+        valid_data = np.load('valid.npy')
+        test_data = np.load('test.npy')
+    except:
+        train_data = None
+        valid_data = None
+        test_data = None
 
+    if train_data is None or valid_data is None or test_data is None:
+        raw_data = np.load('win_lose_data.npy')
+        d = {}
+        for i in range(raw_data.shape[0]):
+            for j in range(raw_data.shape[1]):
+                win = raw_data[i][j][0]
+                lose = raw_data[i][j][1]
+                if win + lose <= 0:
+                    continue
+                d[(i, j)] = (win, lose)
 
-def _get_V_from_U(M, U, mask):
-    column = M.shape[1]
-    rank = U.shape[1]
-    V = np.empty((rank, column), dtype=M.dtype)
+        full_data = np.zeros((len(d.keys()), 6))
+        for i, (user_id, item_id) in enumerate(d.keys()):
+            win, lose = d[(user_id, item_id)]
+            full_data[i][0] = user_id
+            full_data[i][1] = item_id
+            full_data[i][2] = win
+            full_data[i][3] = lose
+            full_data[i][4] = win / (win + lose)
+            full_data[i][5] = win + lose
 
-    for j in range(0, column):
-        U_ = U.copy()
-        U_[mask[:, j] != 1, :] = 0
-        V[:, j] = np.linalg.lstsq(U_, M[:, j], rcond=None)[0]
-    return V
+        mask = np.ones(full_data.shape[0])  # 1: train mask
+        mask[np.random.rand(full_data.shape[0]) < 0.02] = 2  # 2: valid mask
+        mask[np.random.rand(full_data.shape[0]) < 0.1] = 3  # 3: test mask
 
+        train_data = full_data[mask == 1, :]
+        valid_data = full_data[mask == 2, :]
+        test_data = full_data[mask == 3, :]
 
-def _get_training_err(M, U, V, mask):
-    error_matrix = M - np.dot(U, V)
-    error_matrix[mask != 1] = 0
-    return np.linalg.norm(error_matrix, 'fro') / math.sqrt(np.sum(mask == 1))
+        np.save('train.npy', train_data)
+        np.save('valid.npy', valid_data)
+        np.save('test.npy', test_data)
 
-
-def _init_U(M, rank):
-    M[M == -1] = 0
-    U, S, V = np.linalg.svd(M, full_matrices=False)
-    U_hat = U[:, :rank]
-    # clip_threshold = 2 * mu * math.sqrt(k / max(M.shape))
-    # U_hat[U_hat > clip_threshold] = 0
-    # U_hat = orth(U_hat)
-    return U_hat
-
-
-def _algorithm_average(M, mask):
-    mu = np.mean(M[mask == 1])
-    print('MEAN:', mu)
-    A = np.ones(M.shape) * mu
-    return A
-
-
-def _get_A_from_M(M_, mask, rank):
-    mu = np.mean(M_[mask == 1])
-    b_u = np.mean()
-
-
-    M = M_ - mu
-
-    U = _init_U(M[:, :], rank)
-    V = None
-    prev_err = float("inf")
-    for t in range(MAX_ITER):
-        print('>> ITER', t)
-
-        V = _get_V_from_U(M, U, mask)
-        print('   - V:', _get_training_err(M, U, V, mask))
-        U = _get_V_from_U(M.T, V.T, mask.T).T
-        err = _get_training_err(M, U, V, mask)
-        print('   - U:', err)
-
-        if err < EARLY_STOP_ERR:
-            break
-        if prev_err - EARLY_STOP_ERR_DELTA <= err <= prev_err + EARLY_STOP_ERR_DELTA:
-            break
-
-        prev_err = err
-
-    assert V is not None
-    return np.dot(U, V) * 0.1 + mu
+    return {
+        'train': _get_dict_from_data(train_data),
+        'valid': _get_dict_from_data(valid_data),
+        'test': _get_dict_from_data(test_data),
+    }
 
 
 if __name__ == '__main__':
-    # try:
-    #     G = np.load('win_rate.npy')
-    # except:
-    #     G = None
+    data = _init_data()
+    main(data)
+
+    # G = -1 * np.ones((raw_data.shape[0], raw_data.shape[1]))
+    # T =
+    # for i in range(raw_data.shape[0]):
+    #     for j in range(raw_data.shape[1]):
+    #         win = raw_data[i, j, 0]
+    #         lose = raw_data[i, j, 1]
+    #         if win + lose == 0:
+    #             continue
+    #         if win + lose < 10:
+    #             continue
+    #         d[win + lose] = d.get(win + lose, 0) + 1
     #
-    # if G is None:
-    raw_data = np.load('win_lose_data.npy')
-    print(raw_data.shape)
-
-    G = -1 * np.ones((raw_data.shape[0], raw_data.shape[1]))
-    d = {}
-    for i in range(raw_data.shape[0]):
-        for j in range(raw_data.shape[1]):
-            win = raw_data[i, j, 0]
-            lose = raw_data[i, j, 1]
-            if win + lose == 0:
-                continue
-            if win + lose < 10:
-                continue
-            d[win + lose] = d.get(win + lose, 0) + 1
-            G[i, j] = win / (win + lose)
-
-    # for key in sorted(d.keys()):
-    #     print(key, d[key])
-    # np.save('win_rate.npy', G)
-    # assert False
-
-    rank = 5
-    # G = np.dot(np.random.rand(1000, rank), np.random.rand(rank, 100))
-    # G[np.random.rand(*G.shape) <= 0.5] = -1
-    print('RANK', rank)
-    test_p = 0.1
-    print(np.amax(G))
-    print(np.amin(G))
-
-    # mask_ij =  1 if entry (i, j) is training case
-    # mask_ij = -1 if entry (i, j) is test case
-    # mask_ij =  0 otherwise
-    mask = np.ones(G.shape)
-    mask[np.random.rand(*G.shape) <= test_p] = -1
-    mask[G == -1] = 0
-    # G is ground truth
-    print(np.sum(mask == 1))
-    print(np.sum(mask == -1))
-    print(np.sum(mask == 0))
-
-    # M is problem (training case)
-    M = G.copy()
-    M[mask != 1] = -1
-
-    # A is answer.
-    # A = _algorithm_average(M, mask)
-    A = _get_A_from_M(M, mask, rank)
-    A = np.maximum(np.minimum(1, A), 0)
-
-    training_error = G - A
-    training_error[mask != 1] = 0
-    print('TRAINING RMSE',
-          np.linalg.norm(training_error, 'fro') / math.sqrt(np.sum(mask == 1)))
-
-    test_error = G - A
-    test_error[mask != -1] = 0
-    print(test_error)
-    print(np.amax(test_error))
-    print(np.amin(test_error))
-    print('TEST RMSE',
-          np.linalg.norm(test_error, 'fro') / math.sqrt(np.sum(mask == -1)))
+    # # for key in sorted(d.keys()):
+    # #     print(key, d[key])
+    # # np.save('win_rate.npy', G)
+    # # assert False
+    #
+    # rank = 5
+    # # G = np.dot(np.random.rand(1000, rank), np.random.rand(rank, 100))
+    # # G[np.random.rand(*G.shape) <= 0.5] = -1
+    # print('RANK', rank)
+    # test_p = 0.1
+    # print(np.amax(G))
+    # print(np.amin(G))
+    #
+    # # mask_ij =  1 if entry (i, j) is training case
+    # # mask_ij = -1 if entry (i, j) is test case
+    # # mask_ij =  0 otherwise
+    # mask = np.ones(G.shape)
+    # mask[np.random.rand(*G.shape) <= test_p] = -1
+    # mask[G == -1] = 0
+    # # G is ground truth
+    # print(np.sum(mask == 1))
+    # print(np.sum(mask == -1))
+    # print(np.sum(mask == 0))
+    #
+    # # M is problem (training case)
+    # M = G.copy()
+    # M[mask != 1] = -1
+    #
+    # # A is answer.
+    # # A = _algorithm_average(M, mask)
+    # A = _get_A_from_M(M, mask, rank)
+    # A = np.maximum(np.minimum(1, A), 0)
+    #
+    # training_error = G - A
+    # training_error[mask != 1] = 0
+    # print('TRAINING RMSE',
+    #       np.linalg.norm(training_error, 'fro') / math.sqrt(np.sum(mask == 1)))
+    #
+    # test_error = G - A
+    # test_error[mask != -1] = 0
+    # print(test_error)
+    # print(np.amax(test_error))
+    # print(np.amin(test_error))
+    # print('TEST RMSE',
+    #       np.linalg.norm(test_error, 'fro') / math.sqrt(np.sum(mask == -1)))
