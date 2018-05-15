@@ -22,22 +22,22 @@ def _get_masked_matrix(M, omega):
     return M_
 
 
-def _get_V_from_U(M, U):
+def _get_V_from_U(M, U, mask):
     column = M.shape[1]
     rank = U.shape[1]
     V = np.empty((rank, column), dtype=M.dtype)
 
     for j in range(0, column):
         U_ = U.copy()
-        U_[M[:, j] == -1, :] = 0
+        U_[mask[:, j] != 1, :] = 0
         V[:, j] = np.linalg.lstsq(U_, M[:, j], rcond=None)[0]
     return V
 
 
-def _get_err(M, U, V):
+def _get_training_err(M, U, V, mask):
     error_matrix = M - np.dot(U, V)
-    error_matrix[M == -1] = 0
-    return np.linalg.norm(error_matrix, 'fro') / math.sqrt(np.sum(M != -1))
+    error_matrix[mask != 1] = 0
+    return np.linalg.norm(error_matrix, 'fro') / math.sqrt(np.sum(mask == 1))
 
 
 def _init_U(M, rank):
@@ -50,17 +50,17 @@ def _init_U(M, rank):
     return U_hat
 
 
-def _get_A_from_M(M, rank):
+def _get_A_from_M(M, mask, rank):
     U = _init_U(M[:, :], rank)
     V = None
     prev_err = float("inf")
     for t in range(MAX_ITER):
         print('>> ITER', t)
 
-        V = _get_V_from_U(M, U)
-        print('   - V:', _get_err(M, U, V))
-        U = _get_V_from_U(M.T, V.T).T
-        err = _get_err(M, U, V)
+        V = _get_V_from_U(M, U, mask)
+        print('   - V:', _get_training_err(M, U, V, mask))
+        U = _get_V_from_U(M.T, V.T, mask.T).T
+        err = _get_training_err(M, U, V, mask)
         print('   - U:', err)
 
         if err < EARLY_STOP_ERR:
@@ -95,9 +95,13 @@ if __name__ == '__main__':
 
         np.save('win_rate.npy', G)
 
-    rank = 20
+    rank = 2
     print('RANK', rank)
     test_p = 0.1
+
+    # mask_ij =  1 if entry (i, j) is training case
+    # mask_ij = -1 if entry (i, j) is test case
+    # mask_ij =  0 otherwise
     mask = np.ones(G.shape)
     mask[np.random.rand(*G.shape) <= test_p] = -1
     mask[G == -1] = 0
@@ -108,7 +112,7 @@ if __name__ == '__main__':
     M[mask != 1] = -1
 
     # A is answer.
-    A = _get_A_from_M(M, rank)
+    A = _get_A_from_M(M, mask, rank)
     A = np.maximum(np.minimum(np.ones(A.shape), A), np.zeros(A.shape))
 
     training_error = G - A
