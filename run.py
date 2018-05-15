@@ -5,8 +5,8 @@ import numpy as np
 from scipy.linalg import orth
 
 MAX_ITER = 10000
-EARLY_STOP_ERR = 1e-3
-EARLY_STOP_ERR_DELTA = 1e-3
+EARLY_STOP_ERR = 1e-4
+EARLY_STOP_ERR_DELTA = 1e-4
 
 
 def _make_lr_matrix(m, n, k):
@@ -46,11 +46,24 @@ def _init_U(M, rank):
     U_hat = U[:, :rank]
     # clip_threshold = 2 * mu * math.sqrt(k / max(M.shape))
     # U_hat[U_hat > clip_threshold] = 0
-    U_hat = orth(U_hat)
+    # U_hat = orth(U_hat)
     return U_hat
 
 
-def _get_A_from_M(M, mask, rank):
+def _algorithm_average(M, mask):
+    mu = np.mean(M[mask == 1])
+    print('MEAN:', mu)
+    A = np.ones(M.shape) * mu
+    return A
+
+
+def _get_A_from_M(M_, mask, rank):
+    mu = np.mean(M_[mask == 1])
+    b_u = np.mean()
+
+
+    M = M_ - mu
+
     U = _init_U(M[:, :], rank)
     V = None
     prev_err = float("inf")
@@ -71,33 +84,44 @@ def _get_A_from_M(M, mask, rank):
         prev_err = err
 
     assert V is not None
-    return np.dot(U, V)
+    return np.dot(U, V) * 0.1 + mu
 
 
 if __name__ == '__main__':
-    try:
-        G = np.load('win_rate.npy')
-    except:
-        G = None
+    # try:
+    #     G = np.load('win_rate.npy')
+    # except:
+    #     G = None
+    #
+    # if G is None:
+    raw_data = np.load('win_lose_data.npy')
+    print(raw_data.shape)
 
-    if G is None:
-        raw_data = np.load('win_lose_data.npy')
-        print(raw_data.shape)
+    G = -1 * np.ones((raw_data.shape[0], raw_data.shape[1]))
+    d = {}
+    for i in range(raw_data.shape[0]):
+        for j in range(raw_data.shape[1]):
+            win = raw_data[i, j, 0]
+            lose = raw_data[i, j, 1]
+            if win + lose == 0:
+                continue
+            if win + lose < 10:
+                continue
+            d[win + lose] = d.get(win + lose, 0) + 1
+            G[i, j] = win / (win + lose)
 
-        G = -1 * np.ones((raw_data.shape[0], raw_data.shape[1]))
-        for i in range(raw_data.shape[0]):
-            for j in range(raw_data.shape[1]):
-                win = raw_data[i, j, 0]
-                lose = raw_data[i, j, 1]
-                if win + lose == 0:
-                    continue
-                G[i, j] = win / (win + lose)
+    # for key in sorted(d.keys()):
+    #     print(key, d[key])
+    # np.save('win_rate.npy', G)
+    # assert False
 
-        np.save('win_rate.npy', G)
-
-    rank = 3
+    rank = 5
+    # G = np.dot(np.random.rand(1000, rank), np.random.rand(rank, 100))
+    # G[np.random.rand(*G.shape) <= 0.5] = -1
     print('RANK', rank)
     test_p = 0.1
+    print(np.amax(G))
+    print(np.amin(G))
 
     # mask_ij =  1 if entry (i, j) is training case
     # mask_ij = -1 if entry (i, j) is test case
@@ -106,14 +130,18 @@ if __name__ == '__main__':
     mask[np.random.rand(*G.shape) <= test_p] = -1
     mask[G == -1] = 0
     # G is ground truth
+    print(np.sum(mask == 1))
+    print(np.sum(mask == -1))
+    print(np.sum(mask == 0))
 
     # M is problem (training case)
     M = G.copy()
     M[mask != 1] = -1
 
     # A is answer.
+    # A = _algorithm_average(M, mask)
     A = _get_A_from_M(M, mask, rank)
-    A = np.maximum(np.minimum(np.ones(A.shape), A), np.zeros(A.shape))
+    A = np.maximum(np.minimum(1, A), 0)
 
     training_error = G - A
     training_error[mask != 1] = 0
@@ -122,5 +150,8 @@ if __name__ == '__main__':
 
     test_error = G - A
     test_error[mask != -1] = 0
+    print(test_error)
+    print(np.amax(test_error))
+    print(np.amin(test_error))
     print('TEST RMSE',
           np.linalg.norm(test_error, 'fro') / math.sqrt(np.sum(mask == -1)))
