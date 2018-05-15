@@ -95,7 +95,7 @@ if __name__ == '__main__':
 
         np.save('win_rate.npy', G)
 
-    rank = 2
+    rank = 3
     print('RANK', rank)
     test_p = 0.1
 

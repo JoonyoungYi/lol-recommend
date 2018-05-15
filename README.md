@@ -37,6 +37,6 @@ $ python run.py
 
 * `training case : test case = 9 : 1`
 
-| RANK | TRAINING RMSE | TEST RMSE  |
-|------|---------------|------------|
-|   2  |               |            |
+| RANK | TRAINING RMSE      | TEST RMSE          |
+|------|--------------------|--------------------|
+| 2    | 0.3592192670994933 | 0.3974507102907396 |
