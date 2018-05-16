@@ -19,24 +19,31 @@ def _train(session, saver, models, train_data, valid_data):
     early_stop_iters = 0
 
     for epoch in range(EPOCH_NUMBER):
-        _, train_rmse = session.run(
-            [models['train_op'], models['rmse']],
-            feed_dict={
-                models['u']: train_data['user_id'],
-                models['i']: train_data['item_id'],
-                models['r']: train_data['rating'],
-            })
+        if models['train_op']:
+            _, train_rmse = session.run(
+                [models['train_op'], models['rmse']],
+                feed_dict={
+                    models['u']: train_data['user_id'],
+                    models['i']: train_data['item_id'],
+                    models['r']: train_data['rating'],
+                    models['c']: train_data['confidence'],
+                })
+        else:
+            train_rmse = float("NaN")
 
-        _, valid_rmse = session.run(
-            [models['loss'], models['rmse']],
+        _, valid_rmse, mu = session.run(
+            [models['loss'], models['rmse'], models['mu']],
             feed_dict={
                 models['u']: valid_data['user_id'],
                 models['i']: valid_data['item_id'],
                 models['r']: valid_data['rating'],
+                models['c']: valid_data['confidence'],
             })
-        if epoch % 10 == 0:
-            print('>> EPOCH:', "{:3d}".format(epoch), "{:3f}, {:3f}".format(
-                train_rmse, valid_rmse))
+        # print(mu)
+
+        # if epoch % 10 == 0:
+        print('>> EPOCH:', "{:3d}".format(epoch), "{:3f}, {:3f}".format(
+            train_rmse, valid_rmse))
 
         if EARLY_STOP:
             early_stop_iters += 1
@@ -61,6 +68,7 @@ def _test(session, models, valid_data, test_data):
             models['u']: valid_data['user_id'],
             models['i']: valid_data['item_id'],
             models['r']: valid_data['rating'],
+            models['c']: valid_data['confidence'],
         })
 
     test_rmse = session.run(
@@ -69,6 +77,7 @@ def _test(session, models, valid_data, test_data):
             models['u']: test_data['user_id'],
             models['i']: test_data['item_id'],
             models['r']: test_data['rating'],
+            models['c']: test_data['confidence'],
         })
     print("Final valid RMSE: {}, test RMSE: {}".format(valid_rmse, test_rmse))
     return valid_rmse, test_rmse
@@ -82,8 +91,9 @@ def _init_model_file_path():
 
 
 def main(data):
-    K = 4
-    lambda_value = 1
+    K = 1
+    print("rank", K)
+    lambda_value = 0.1
     N, M = 560200, 140
     models = init_models(N, M, K, lambda_value)
 
